@@ -1,0 +1,16 @@
+/home/lpa1/Motorola/MiletusHalide/parallax_inpaint/ufpe/backend/src/foreground_mesh_gen/build/CMakeFiles/c_backend-halide_generators.dir
+/home/lpa1/Motorola/MiletusHalide/parallax_inpaint/ufpe/backend/src/foreground_mesh_gen/build/CMakeFiles/foreground_mesh_verts.generator.dir
+/home/lpa1/Motorola/MiletusHalide/parallax_inpaint/ufpe/backend/src/foreground_mesh_gen/build/CMakeFiles/foreground_mesh_verts.dir
+/home/lpa1/Motorola/MiletusHalide/parallax_inpaint/ufpe/backend/src/foreground_mesh_gen/build/CMakeFiles/foreground_mesh_verts.update.dir
+/home/lpa1/Motorola/MiletusHalide/parallax_inpaint/ufpe/backend/src/foreground_mesh_gen/build/CMakeFiles/foreground_mesh_verts_native.runtime.dir
+/home/lpa1/Motorola/MiletusHalide/parallax_inpaint/ufpe/backend/src/foreground_mesh_gen/build/CMakeFiles/foreground_mesh_verts_native.dir
+/home/lpa1/Motorola/MiletusHalide/parallax_inpaint/ufpe/backend/src/foreground_mesh_gen/build/CMakeFiles/foreground_mesh_verts_native.update.dir
+/home/lpa1/Motorola/MiletusHalide/parallax_inpaint/ufpe/backend/src/foreground_mesh_gen/build/CMakeFiles/foreground_mesh_faces.generator.dir
+/home/lpa1/Motorola/MiletusHalide/parallax_inpaint/ufpe/backend/src/foreground_mesh_gen/build/CMakeFiles/foreground_mesh_faces.dir
+/home/lpa1/Motorola/MiletusHalide/parallax_inpaint/ufpe/backend/src/foreground_mesh_gen/build/CMakeFiles/foreground_mesh_faces.update.dir
+/home/lpa1/Motorola/MiletusHalide/parallax_inpaint/ufpe/backend/src/foreground_mesh_gen/build/CMakeFiles/foreground_mesh_faces_native.runtime.dir
+/home/lpa1/Motorola/MiletusHalide/parallax_inpaint/ufpe/backend/src/foreground_mesh_gen/build/CMakeFiles/foreground_mesh_faces_native.dir
+/home/lpa1/Motorola/MiletusHalide/parallax_inpaint/ufpe/backend/src/foreground_mesh_gen/build/CMakeFiles/foreground_mesh_faces_native.update.dir
+/home/lpa1/Motorola/MiletusHalide/parallax_inpaint/ufpe/backend/src/foreground_mesh_gen/build/CMakeFiles/foreground_mesh_verts_module.dir
+/home/lpa1/Motorola/MiletusHalide/parallax_inpaint/ufpe/backend/src/foreground_mesh_gen/build/CMakeFiles/edit_cache.dir
+/home/lpa1/Motorola/MiletusHalide/parallax_inpaint/ufpe/backend/src/foreground_mesh_gen/build/CMakeFiles/rebuild_cache.dir
