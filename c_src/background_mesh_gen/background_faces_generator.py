@@ -10,12 +10,13 @@ import halide as hl
 # Apply a mask value to a 2D image using a logical operator that is selected at compile-time.
 @hl.generator(name = "back_faces")
 class BackgroundFacesGenerator:
-    block_size = hl.GeneratorParam(16)
+    # block_size = hl.GeneratorParam(16)
 
     vert_img = hl.InputBuffer(hl.Float(32), 3)
     fore_vert_img = hl.InputBuffer(hl.Float(32), 3)
     uv_img = hl.InputBuffer(hl.Float(32), 3)
     label_img = hl.InputBuffer(hl.UInt(8), 2)
+    block_size = hl.InputScalar(hl.Int(32))
 
     out_verts = hl.OutputBuffer(hl.Float(32), 2)
     out_uvs = hl.OutputBuffer(hl.Float(32), 2)
@@ -100,6 +101,7 @@ class BackgroundFacesGenerator:
         G.out_uvs.set_estimates([(0,41*41),(0,2)])
         G.out_faces.set_estimates([(0,2*40*40),(0,3)])
         G.img_index.set_estimates([(0,41*16),(0,41*16)])
+        G.block_size.set_estimate(32)
 
         if G.using_autoscheduler():
             pass

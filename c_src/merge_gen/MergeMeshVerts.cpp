@@ -8,15 +8,15 @@ using namespace Halide::Internal;
 class MergeMeshVerts : public Halide::Generator<MergeMeshVerts> {
 public:
 
-    GeneratorParam<int> block_size{"block_size",16};
+    // GeneratorParam<int> block_size{"block_size",16};
 
     Input<Buffer<int32_t, 2>> I_fore_idx{"I_fore_idx"};
     Input<Buffer<int32_t, 2>> I_back_idx{"I_back_idx"};
     Input<Buffer<uint8_t, 2>> I_back_labels{"I_back_labels"};
     // Input<Buffer<uint8_t, 2>> I_canny_mask{"I_canny_mask"};
     Input<Buffer<uint8_t, 2>> BI_fore_mask{"BI_fore_mask"};
-
     Input<int32_t> N0_verts{"N0_verts"};
+    Input<int> block_size{"block_size"};
 
     Output<Buffer<int32_t, 3>> P_out_faces{"P_out_faces"};
     Output<Buffer<int32_t, 1>> P_N_faces{"P_N_faces"};

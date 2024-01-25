@@ -8,11 +8,12 @@ using namespace Halide::Internal;
 class ForegroundMeshVerts : public Halide::Generator<ForegroundMeshVerts> {
 public:
 
-    GeneratorParam<int> block_size{"block_size",16};
+    // GeneratorParam<int> block_size{"block_size",16};
 
     Input<Buffer<uint8_t, 2>> I_canny{"I_canny"};
     Input<Buffer<uint8_t, 2>> I_back_canny{"I_back_canny"};
     Input<Buffer<uint8_t, 2>> I_depth{"I_depth"};
+    Input<int> block_size{"block_size"};
 
     Output<Buffer<int32_t, 3>> P_fore_faces{"P_fore_faces"};
     Output<Buffer<int32_t, 1>> P_Nfaces{"P_Nfaces"};
@@ -87,15 +88,15 @@ public:
         Expr prev_l = select(
             check_xp && !check_yp && check_p,
                 select(
-                    (labeled( 0, img_yp, img_p)[0]>0) || (labeled( 16, img_yp, back_idx)[0]>0),1,0
+                    (labeled( 0, img_yp, img_p)[0]>0) || (labeled( block_size, img_yp, back_idx)[0]>0),1,0
                 ),
             !check_xp && check_yp && check_p,
                 select(
-                    (labeled( img_xp, 0, img_p)[0]>0) || (labeled( img_xp, 16, up_idx)[0]>0),1,0
+                    (labeled( img_xp, 0, img_p)[0]>0) || (labeled( img_xp, block_size, up_idx)[0]>0),1,0
                 ),
             check_xp && check_yp && check_p,
                 select(
-                    (labeled( 0, 0, img_p)[0]>0) || (labeled( 0, 16, up_idx)[0]>0) || (labeled( 16, 16, back_up_idx)[0]>0) || (labeled( 16, 0, back_idx)[0]>0),
+                    (labeled( 0, 0, img_p)[0]>0) || (labeled( 0, block_size, up_idx)[0]>0) || (labeled( block_size, block_size, back_up_idx)[0]>0) || (labeled( block_size, 0, back_idx)[0]>0),
                     1,
                     0
                 ),
@@ -106,15 +107,15 @@ public:
         Expr prev_m = select(
             check_xp && !check_yp && check_p,
                 select(
-                    (labeled( 0, img_yp, img_p)[1]>0) || (labeled( 16, img_yp, back_idx)[1]>0),1,0
+                    (labeled( 0, img_yp, img_p)[1]>0) || (labeled( block_size, img_yp, back_idx)[1]>0),1,0
                 ),
             !check_xp && check_yp && check_p,
                 select(
-                    (labeled( img_xp, 0, img_p)[1]>0) || (labeled( img_xp, 16, up_idx)[1]>0),1,0
+                    (labeled( img_xp, 0, img_p)[1]>0) || (labeled( img_xp, block_size, up_idx)[1]>0),1,0
                 ),
             check_xp && check_yp && check_p,
                 select(
-                    (labeled( 0, 0, img_p)[1]>0) || (labeled( 0, 16, up_idx)[1]>0) || (labeled( 16, 16, back_up_idx)[1]>0) || (labeled( 16, 0, back_idx)[1]>0),
+                    (labeled( 0, 0, img_p)[1]>0) || (labeled( 0, block_size, up_idx)[1]>0) || (labeled( block_size, block_size, back_up_idx)[1]>0) || (labeled( block_size, 0, back_idx)[1]>0),
                     1,
                     0
                 ),

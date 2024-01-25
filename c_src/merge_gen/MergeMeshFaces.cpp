@@ -8,11 +8,12 @@ using namespace Halide::Internal;
 class MergeMeshFaces : public Halide::Generator<MergeMeshFaces> {
 public:
 
-    GeneratorParam<int> block_size{"block_size",16};
+    // GeneratorParam<int> block_size{"block_size",16};
 
     Input<Buffer<uint8_t, 2>> I_depth{"I_depth"};
     Input<Buffer<int32_t, 3>> P_faces{"P_faces"};
     Input<Buffer<int32_t, 2>> I_Vidx{"I_Vidx"};
+    Input<int> block_size{"block_size",16};
 
     Output<Buffer<float, 2>> out_verts{"out_verts"};
     Output<Buffer<float, 2>> out_uvs{"out_uvs"};

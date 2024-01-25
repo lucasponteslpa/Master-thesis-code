@@ -7,12 +7,13 @@ import argparse
 from mesh_utils import *
 from utilities import gen_video
 from depth_inference import midas_inference
+from simple_lama_inpainting import SimpleLama
 # from background_mesh import BackgroundMesh
 # from foreground_mesh import ForegroundMesh
 # from quadtrees import mQuadT, Block
 # from MiDaS.depth_estimation import runMidas
 
-from background_verts_module import back_verts_generator, back_faces_generator
+from background_verts_module import background_mesh_verts, background_mesh_faces
 from foreground_mesh_verts_module import pforeground_mesh_verts, pforeground_mesh_faces
 from merge_mesh_verts_module import pmerge_mesh_verts, pmerge_mesh_faces
 
@@ -33,19 +34,6 @@ class ParallaxInpainting:
         self.block_size = block_size
         self.blocks_per_dim = depth_max_dim//block_size
         self.midas_mobile = midas_mobile
-
-
-    def run(self, render_mesh=True, debug=False, get_screenshot=False):
-        self.load_depth_and_canny(debug=debug)
-        self.load_vertices()
-        self.load_uvs()
-        self.load_faces()
-        self.gen_background_mesh(debug_mask=debug)
-        self.gen_foreground_mesh(debug=True)
-        if render_mesh:
-            self.renderCircleZoom(get_screenshot=get_screenshot)
-        else:
-            self.save_mesh()
 
 
     def load_depth_and_canny(self, debug=False):
@@ -76,8 +64,8 @@ class ParallaxInpainting:
 
         dim = (self.width, self.height)
         color_blur = cv2.GaussianBlur((255*color).astype(np.uint8), (7,7),0)
-        color_res = cv2.resize(cv2.cvtColor(color_blur,cv2.COLOR_RGB2BGR), dsize=(3*self.width, 3*self.height), interpolation = cv2.INTER_CUBIC)
-        cv2.imwrite("color.png", color_res)
+        self.color_res = cv2.resize(cv2.cvtColor(color_blur,cv2.COLOR_RGB2BGR), dsize=(3*self.width, 3*self.height), interpolation = cv2.INTER_CUBIC)
+        cv2.imwrite("color.png", self.color_res)
         depth_res_c = cv2.resize((img_depth*255).astype(np.uint8), dsize=dim, interpolation = cv2.INTER_CUBIC)
         cv2.imwrite("depth_inference.png", depth_res_c)
         kernel = np.ones((3, 3), 'uint8')
@@ -224,135 +212,7 @@ class ParallaxInpainting:
         return ccl_means
 
 
-    def load_vertices(self):
-        x_coords = torch.linspace(self.ratio_h,-self.ratio_h,self.img_depth_vert.shape[0],dtype=torch.float32)
-        y_coords = torch.linspace(self.ratio_w,-self.ratio_w,self.img_depth_vert.shape[1],dtype=torch.float32)
-        x_grid, y_grid = torch.meshgrid(x_coords, y_coords, indexing='ij')
-        x_coords = x_grid.reshape(-1).unsqueeze(-1)
-        y_coords = y_grid.reshape(-1).unsqueeze(-1)
-        z_coords = torch.from_numpy((self.img_depth_vert[:,:,0]).reshape(-1)).unsqueeze(-1).to(torch.float32)
-        self.max_v_0 = np.abs(y_coords[0] - y_coords[1])
-        self.max_v_1 = np.abs(x_coords[0] - x_coords[1])
-        self.vertices = torch.cat((y_coords,x_coords, z_coords), -1)
-
-
-    def load_uvs(self):
-        i_coords = torch.linspace(1.0,0.0 + ((1.0/(self.img_depth_vert.shape[0]))),self.img_depth_vert.shape[0],dtype=torch.float32)
-        j_coords = torch.linspace(0.0,1.0 - (1.0/(self.img_depth_vert.shape[1])),self.img_depth_vert.shape[1],dtype=torch.float32)
-        u_grid, v_grid = torch.meshgrid(i_coords, j_coords, indexing='ij')
-        u_coords = u_grid.reshape(-1).unsqueeze(-1)
-        v_coords = v_grid.reshape(-1).unsqueeze(-1)
-        self.uvs = torch.cat((v_coords,u_coords), -1)
-        self.max_uvs_0 = np.abs(j_coords[0] - j_coords[1])
-        self.max_uvs_1 = np.abs(i_coords[0] - i_coords[1])
-
-
-    def load_faces(self):
-        faces = []
-        blocks = []
-        # array with witch faces each verts are connected
-        for i in range((self.img_depth_vert.shape[0]-1)*(self.img_depth_vert.shape[1])-1):
-            if (i+1)%(self.img_depth_vert.shape[1]) != 0 and ((i+self.img_depth_vert.shape[1])//self.img_depth_vert.shape[1])<=self.img_depth_vert.shape[0]:
-                idx0 = i
-                idx1 = i + 1
-                idx2 = i + (self.img_depth_vert.shape[1])
-                idx3 = i + (self.img_depth_vert.shape[1]) + 1
-
-                depth_img_h_idx = (i)//self.img_depth_vert.shape[1]
-                v_pivot_h0 = (depth_img_h_idx*self.block_size)
-                v_pivot_h1 = ((depth_img_h_idx+1)*self.block_size)+1
-                v_pivot_w0 = (i*self.block_size)%self.img_depth.shape[1]
-                v_pivot_w1 = ((i+1)*self.block_size)%self.img_depth.shape[1]+1
-                blocks.append([idx0,idx1,idx2,idx3, v_pivot_h0, v_pivot_h1, v_pivot_w0, v_pivot_w1])
-                faces.append([idx1, idx2, idx0]) # f_idx
-                faces.append([idx2, idx1, idx3]) # f_idx + 1
-        self.blocks = torch.tensor(blocks)
-        self.faces = torch.tensor(faces)
         # breakpoint()
-
-
-    # def gen_background_mesh(self, debug_mask=False):
-    #     background_generator = BackgroundMesh(self.vertices,
-    #                                       self.uvs,
-    #                                       torch.empty((0,3)).to(torch.int32),
-    #                                       self.blocks,
-    #                                       self.canny,
-    #                                       self.img_depth,
-    #                                       self.img_depth_vert.shape[1]-1,
-    #                                       (self.img_depth_vert.shape[0]*self.block_size,self.img_depth_vert.shape[1]*self.block_size),
-    #                                       back_canny=self.back_canny)
-    #                                         # )
-    #     self.mask_img = background_generator.run()
-    #     if debug_mask:
-    #         cv2.imwrite('mask_img.png',255*self.mask_img.detach().numpy())
-    #     self.background_verts = background_generator.verts
-    #     self.background_uvs = background_generator.uvs
-    #     self.background_faces = background_generator.faces
-    #     self.vertices_labels = background_generator.definitive_v_labels
-
-
-    def gen_foreground_mesh(self, debug=False):
-        n_ccl, ccl_canny = self.get_ccl(self.canny, True)
-
-        if debug:
-            print("n_ccl",n_ccl)
-
-        kernel = np.ones((3, 3), 'uint8')
-        dilated_ccl = cv2.dilate(ccl_canny.astype(np.uint8), kernel, iterations=1)
-        back_ccl = self.get_background_ccl(self.img_depth,ccl_canny,dilated_ccl)
-
-        if debug:
-            self.print_ccl((-1*back_ccl), n_ccl, name='back_ccl')
-
-        ccl_means = self.get_ccl_means(n_ccl, ccl_canny,back_ccl,self.img_depth)
-
-        img_vert = np.zeros((ccl_canny.shape[0],ccl_canny.shape[1],2))
-        blocks = []
-        for b_i in range(0,self.img_depth.shape[0]-self.block_size, self.block_size):
-            for b_j in range(0,self.img_depth.shape[1]-self.block_size, self.block_size):
-                if (ccl_canny[b_i:b_i+self.block_size+1,b_j:b_j+self.block_size+1]>0).sum()>0:
-                    block = Block([b_i,b_i+self.block_size,b_j,b_j+self.block_size])
-                    blocks.append(block)
-                    img_vert = block.quad_label(ccl_canny, back_ccl, img_vert, self.img_depth[:,:,0])
-        if debug:
-            self.print_ccl(img_vert[:,:,0],n_ccl,name='vert_labels')
-
-        img_index = -1*np.ones_like(img_vert[:,:,0])
-        fore_faces, img_index, img_vert = gen_not_edge_faces(self.img_depth[:,:,0],
-                                                   self.canny,
-                                                   self.block_size,
-                                                   self.vertices,
-                                                   self.img_depth_vert.shape[1],
-                                                   self.mask_img,
-                                                   self.vertices_labels,
-                                                   img_index, img_vert)
-        n_verts, n_uvs, n_faces = self.background_verts, self.background_uvs, fore_faces
-        from foreground_mesh import BlockForegroundMesh
-        vs_max = [self.img_depth.shape[0]-self.block_size-1,self.img_depth.shape[1]-self.block_size-1]
-        uvs_max = [self.img_depth.shape[0],self.img_depth.shape[1]]
-        block_foreground = BlockForegroundMesh(n_verts,
-                                               n_uvs,
-                                               n_faces,
-                                               img_vert,
-                                               uvs_max,
-                                               vs_max,
-                                               (self.ratio_h,self.ratio_w),
-                                               blocks,
-                                               self.vertices_labels,
-                                               self.img_depth,
-                                               self.canny,
-                                               img_index,
-                                               self.mask_img,
-                                               self.block_size)
-        n_verts, n_uvs, n_faces,self.mask_img = block_foreground.run_indexes()
-
-        if debug:
-            cv2.imwrite('mask_img.png',255*self.mask_img.detach().numpy())
-            self.save_mesh(file_name='parallax_fore.obj', verts=n_verts, faces=n_faces)
-
-        self.foreground_verts = n_verts
-        self.foreground_uvs = n_uvs
-        self.foreground_faces = n_faces
 
     def halide_mesh(self, get_screenshot = False):
         self.load_depth_and_canny(debug=True)
@@ -370,10 +230,10 @@ class ParallaxInpainting:
         assert depth_buf.ndim == 2
         assert depth_buf.dtype == np.uint8
 
-        IB_shape = (( canny_buf.shape[0]//16) + 1, (canny_buf.shape[1]//16) + 1)
-        IB_verts_shape = (3, (canny_buf.shape[0]//16 ) + 1, (canny_buf.shape[1]//16) + 1)
-        IB_uvs_shape = (3, (canny_buf.shape[0]//16 ) + 1, (canny_buf.shape[1]//16) + 1)
-        P_faces_shape = (3, ((canny_buf.shape[0]//16))*((canny_buf.shape[1]//16))*2)
+        IB_shape = (( canny_buf.shape[0]//self.block_size) + 1, (canny_buf.shape[1]//self.block_size) + 1)
+        IB_verts_shape = (3, (canny_buf.shape[0]//self.block_size ) + 1, (canny_buf.shape[1]//self.block_size) + 1)
+        IB_uvs_shape = (3, (canny_buf.shape[0]//self.block_size ) + 1, (canny_buf.shape[1]//self.block_size) + 1)
+        P_faces_shape = (3, ((canny_buf.shape[0]//self.block_size))*((canny_buf.shape[1]//self.block_size))*2)
         IB_merge_mask = np.empty(IB_shape, dtype=canny_buf.dtype)
         IB_verts_buf = np.empty(IB_verts_shape, dtype=np.float32)
         IB_fore_verts_buf = np.empty(IB_verts_shape, dtype=np.float32)
@@ -381,16 +241,16 @@ class ParallaxInpainting:
         back_faces_buf = np.empty(P_faces_shape, dtype=np.int32)
         I_labels = np.empty(canny_buf.shape, dtype=canny_buf.dtype)
 
-        back_verts_shape = (3, 2*((canny_buf.shape[0]//16)+1)*((canny_buf.shape[1]//16)+1))
-        back_uvs_shape = (3, 2*((canny_buf.shape[0]//16)+1)*((canny_buf.shape[1]//16)+1))
+        back_verts_shape = (3, 2*((canny_buf.shape[0]//self.block_size)+1)*((canny_buf.shape[1]//self.block_size)+1))
+        back_uvs_shape = (3, 2*((canny_buf.shape[0]//self.block_size)+1)*((canny_buf.shape[1]//self.block_size)+1))
         back_verts_buf = np.empty(back_verts_shape, dtype=np.float32)
         back_uvs_buf = np.empty(back_uvs_shape, dtype=np.float32)
         I_back_verts_idx = np.empty(canny_buf.shape, dtype=np.int32)
 
-        back_verts_generator(canny_buf, back_canny_buf, depth_buf, canny_buf.shape[1]//16, canny_buf.shape[0]//16 , IB_merge_mask, IB_verts_buf,IB_fore_verts_buf,IB_uvs_buf, I_labels)
-        back_faces_generator(IB_verts_buf, IB_fore_verts_buf, IB_uvs_buf, I_labels, back_verts_buf, back_uvs_buf, back_faces_buf, I_back_verts_idx)
+        background_mesh_verts(canny_buf, back_canny_buf, depth_buf, self.block_size, canny_buf.shape[1]//self.block_size, canny_buf.shape[0]//self.block_size , IB_merge_mask, IB_verts_buf,IB_fore_verts_buf,IB_uvs_buf, I_labels)
+        background_mesh_faces(IB_verts_buf, IB_fore_verts_buf, IB_uvs_buf, I_labels, self.block_size, back_verts_buf, back_uvs_buf, back_faces_buf, I_back_verts_idx)
         cv2.imwrite('v_labels.png', 255*(I_labels/I_labels.max()))
-        mask_res = cv2.resize(IB_merge_mask[:-1,:-1], dsize=(I_labels.shape[1], I_labels.shape[0]), interpolation=cv2.INTER_NEAREST )
+        mask_res = 255*(cv2.resize(IB_merge_mask[:-1,:-1], dsize=(I_labels.shape[0], I_labels.shape[1]), interpolation=cv2.INTER_NEAREST )>0).astype(np.int32)
         cv2.imwrite('mask.png', 255*(mask_res/mask_res.max()))
         faces = back_faces_buf.transpose((1,0))
         faces = faces[np.where((faces<0).sum(axis=-1)==0)]
@@ -399,36 +259,36 @@ class ParallaxInpainting:
         back_uvs = back_uvs_buf.transpose((1,0))
         # uvs[:,-1] = 1.0 - (verts[:,-1]/255)
 
-        out_f_shape = (((canny_buf.shape[0]//16)*(canny_buf.shape[1]//16)),2*17*17,3)
-        out_Nf_shape = ((canny_buf.shape[0]//16)*(canny_buf.shape[1]//16))
+        out_f_shape = (((canny_buf.shape[0]//self.block_size)*(canny_buf.shape[1]//self.block_size)),2*(self.block_size+1)*(self.block_size+1),3)
+        out_Nf_shape = ((canny_buf.shape[0]//self.block_size)*(canny_buf.shape[1]//self.block_size))
         out_limg_shape = (canny_buf.shape[0],canny_buf.shape[1])
         P_faces_buf = np.zeros(out_f_shape, dtype=np.int32)
         P_Nfaces_buf = np.zeros(out_Nf_shape, dtype=np.int32)
         I_Vlabels_buf = np.zeros(out_limg_shape, dtype=np.int32)
         I_Vidx_buf = np.zeros(out_limg_shape, dtype=np.int32) - 1
+        I_ForeMask_buf = np.zeros(out_limg_shape, dtype=np.int32)
 
-        pforeground_mesh_verts(canny_buf, back_canny_buf, depth_buf, P_faces_buf, P_Nfaces_buf, I_Vlabels_buf)
-        cv2.imwrite('fore_v_labels.png', 255*(I_Vlabels_buf-I_Vlabels_buf.min()/(I_Vlabels_buf.max()-I_Vlabels_buf.min())))
+        pforeground_mesh_verts(canny_buf, back_canny_buf, depth_buf, self.block_size, P_faces_buf, P_Nfaces_buf, I_Vlabels_buf, I_ForeMask_buf)
+
         NV = (I_Vlabels_buf>0).sum()
         NF = P_Nfaces_buf.sum()
         fore_vert_buf = np.zeros((NV,3), dtype=np.float32)
         fore_uv_buf = np.zeros((NV,3), dtype=np.float32)
         fore_face_buf = np.zeros((NF,3), dtype=np.int32)
-        pforeground_mesh_faces(depth_buf, P_faces_buf, I_Vlabels_buf, back_verts_shape[1], I_Vidx_buf, fore_vert_buf, fore_uv_buf, fore_face_buf)
+        pforeground_mesh_faces(depth_buf, P_faces_buf, I_Vlabels_buf, back_verts_shape[1], self.block_size, I_Vidx_buf, fore_vert_buf, fore_uv_buf, fore_face_buf)
 
         merge_out_limg_buf = np.zeros(out_limg_shape, dtype=np.int32)
         merge_out_f_buf = np.zeros(out_f_shape, dtype=np.int32) - 1
         merge_out_Nf_buf = np.zeros(out_Nf_shape, dtype=np.int32)
 
-        pmerge_mesh_verts(I_Vidx_buf, I_back_verts_idx, I_labels, IB_merge_mask, NV+back_verts_shape[1], merge_out_f_buf, merge_out_Nf_buf, merge_out_limg_buf)
+        pmerge_mesh_verts(I_Vidx_buf, I_back_verts_idx, I_labels, IB_merge_mask, NV+back_verts_shape[1], self.block_size, merge_out_f_buf, merge_out_Nf_buf, merge_out_limg_buf)
         NV = (merge_out_limg_buf>0).sum()
         NF = merge_out_Nf_buf.sum()
         merge_vert_buf = np.zeros((NV,3), dtype=np.float32)
         merge_uv_buf = np.zeros((NV,3), dtype=np.float32)
         merge_face_buf = np.zeros((NF,3), dtype=np.int32)
 
-        pmerge_mesh_faces(depth_buf, merge_out_f_buf, merge_out_limg_buf, merge_vert_buf, merge_uv_buf, merge_face_buf)
-        # breakpoint()
+        pmerge_mesh_faces(depth_buf, merge_out_f_buf, merge_out_limg_buf, self.block_size, merge_vert_buf, merge_uv_buf, merge_face_buf)
         all_verts = np.concatenate((back_verts, fore_vert_buf, merge_vert_buf), axis=0)
         all_verts[:,-1] = 1.0 - all_verts[:,-1]
         all_uvs = np.concatenate((back_uvs[:,:2], fore_uv_buf[:,:2], merge_uv_buf[:,:2]), axis=0)
@@ -438,6 +298,10 @@ class ParallaxInpainting:
                     v_pos=torch.from_numpy(all_verts),
                     t_pos_idx=torch.from_numpy(total_faces),
                     file_name='total_mesh.obj')
+        # inpaint_func = SimpleLama()
+        # self.inpaint_dir = 'images/inpaint_curr.png'
+        # res_inp = inpaint_func(self.color_res, mask_res+(255*(I_ForeMask_buf/I_ForeMask_buf.max())))
+        # cv2.imwrite(self.inpaint_dir, res_inp)
         render = TextureRenderer(
                              height=self.render_res,
                              width= self.render_res,
@@ -452,7 +316,6 @@ class ParallaxInpainting:
         render.runCircleZoomWindow(z_init=6, get_screenshot=get_screenshot)
         if get_screenshot:
             gen_video('frames_orig/','movie','sp61_dimas_stylists_parallax_inpaint_v2'+str(self.depth_max_dim)+'b'+str(self.block_size)+'.mp4')
-
 
 
     def renderCircleZoom(self, get_screenshot=False):
@@ -500,8 +363,8 @@ if __name__ == "__main__":
     parallax = ParallaxInpainting(args.rgb_dir,
                                   args.inpaint_dir,
                                   args.depth_dir,
-                                  depth_max_dim=640,
-                                  block_size=16,
+                                  depth_max_dim=1280,
+                                  block_size=32,
                                   render_res=720,
                                   midas_mobile=False)
     # parallax = ParallaxInpainting(args.rgb_dir, None, args.depth_dir, depth_max_dim=640)

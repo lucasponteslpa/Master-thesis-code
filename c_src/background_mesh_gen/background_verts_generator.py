@@ -10,11 +10,12 @@ import halide as hl
 # Apply a I_labels value to a 2D image using a logical operator that is selected at compile-time.
 @hl.generator(name = "back_verts")
 class BackgroundVertsGenerator:
-    block_size = hl.GeneratorParam(16)
+    # block_size = hl.GeneratorParam(16)
 
     canny = hl.InputBuffer(hl.UInt(8), 2)
     back_canny = hl.InputBuffer(hl.UInt(8), 2)
     depth = hl.InputBuffer(hl.UInt(8), 2)
+    block_size = hl.InputScalar(hl.Int(32))
     block_stride_x = hl.InputScalar(hl.Int(32))
     block_stride_y = hl.InputScalar(hl.Int(32))
 
@@ -306,6 +307,7 @@ class BackgroundVertsGenerator:
         G.BI_Vcoords.set_estimates([(0,41),(0,41),(0,3)])
         G.BI_fore_Vcoords.set_estimates([(0,41),(0,41),(0,3)])
         G.BI_UVcoords.set_estimates([(0,41),(0,41),(0,2)])
+        G.block_size.set_estimate(32)
         G.block_stride_x.set_estimate(41)
         G.block_stride_y.set_estimate(41)
         if G.using_autoscheduler():

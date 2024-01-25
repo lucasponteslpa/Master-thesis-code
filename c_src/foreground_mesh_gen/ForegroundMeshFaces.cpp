@@ -8,12 +8,13 @@ using namespace Halide::Internal;
 class ForegroundMeshFaces : public Halide::Generator<ForegroundMeshFaces> {
 public:
 
-    GeneratorParam<int> block_size{"block_size",16};
+    // GeneratorParam<int> block_size{"block_size",16};
 
     Input<Buffer<uint8_t, 2>> I_depth{"I_depth"};
     Input<Buffer<int32_t, 3>> P_faces{"P_faces"};
     Input<Buffer<int32_t, 2>> I_Vlabels{"I_Vlabels"};
     Input<int32_t> Vidx_init{"Vidx_init"};
+    Input<int> block_size{"block_size"};
 
     Output<Buffer<int32_t, 2>> out_v_idx{"out_v_idx"};
     Output<Buffer<float, 2>> out_verts{"out_verts"};

@@ -141,8 +141,7 @@ namespace{
     "canny",
     "back_canny",
     "depth",
-    // "out_l",
-    // "out_d",
+    "block_size",
     "out_f",
     "out_Nf",
     "out_limg",
@@ -157,13 +156,12 @@ static PyObject* pforeground_mesh_verts(PyObject *module, PyObject *args, PyObje
     PyObject* py_canny;
     PyObject* py_back_canny;
     PyObject* py_depth;
-    // PyObject* py_out_l;
-    // PyObject* py_out_d;
+    int block_size;
     PyObject* py_out_f;
     PyObject* py_out_Nf;
     PyObject* py_out_limg;
     PyObject* py_out_mimg;
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOOOO", (char**)arr_kwlist, &py_canny, &py_back_canny, &py_depth, &py_out_f, &py_out_Nf, &py_out_limg, &py_out_mimg)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOiOOOO", (char**)arr_kwlist, &py_canny, &py_back_canny, &py_depth, &block_size, &py_out_f, &py_out_Nf, &py_out_limg, &py_out_mimg)) {
         PyErr_Format(PyExc_ValueError, "Parser Args Internal error");
         return nullptr;
     }
@@ -183,10 +181,10 @@ static PyObject* pforeground_mesh_verts(PyObject *module, PyObject *args, PyObje
     if (!BuffDepth.unpack(py_depth, 0, arr_kwlist[2])) return nullptr;
     // if (!BuffOutputL.unpack(py_out_l, 0, arr_kwlist[3])) return nullptr;
     // if (!BuffOutputD.unpack(py_out_d, 0, arr_kwlist[4])) return nullptr;
-    if (!BuffOutputF.unpack(py_out_f, 0, arr_kwlist[3])) return nullptr;
-    if (!BuffOutputNF.unpack(py_out_Nf, 0, arr_kwlist[4])) return nullptr;
-    if (!BuffOutputLImg.unpack(py_out_limg, 0, arr_kwlist[5])) return nullptr;
-    if (!BuffOutputMImg.unpack(py_out_mimg, 0, arr_kwlist[6])) return nullptr;
+    if (!BuffOutputF.unpack(py_out_f, 0, arr_kwlist[4])) return nullptr;
+    if (!BuffOutputNF.unpack(py_out_Nf, 0, arr_kwlist[5])) return nullptr;
+    if (!BuffOutputLImg.unpack(py_out_limg, 0, arr_kwlist[6])) return nullptr;
+    if (!BuffOutputMImg.unpack(py_out_mimg, 0, arr_kwlist[7])) return nullptr;
 
     long int* shape_in = BuffCanny.py_buf.shape;
     // long int* shape_d = BuffDepth.py_buf.shape;
@@ -207,7 +205,6 @@ static PyObject* pforeground_mesh_verts(PyObject *module, PyObject *args, PyObje
 
     int w = (int)shape_in[1];
     int h = (int)shape_in[0];
-    int block_size=16;
     Buffer<uint8_t> canny_hbuff = Buffer<uint8_t>(canny_host, (int)shape_in[1], (int)shape_in[0]);
     Buffer<uint8_t> back_canny_hbuff= Buffer<uint8_t>(back_canny_host, (int)shape_in[1], (int)shape_in[0]);
     Buffer<uint8_t> depth_hbuff= Buffer<uint8_t>(depth_host, (int)shape_in[1], (int)shape_in[0]);
@@ -220,7 +217,7 @@ static PyObject* pforeground_mesh_verts(PyObject *module, PyObject *args, PyObje
 
 
     Py_BEGIN_ALLOW_THREADS
-        foreground_mesh_verts(canny_hbuff, back_canny_hbuff, depth_hbuff, out_f_hbuff, out_Nf_hbuff, out_limg_hbuff, out_mimg_hbuff);
+        foreground_mesh_verts(canny_hbuff, back_canny_hbuff, depth_hbuff, block_size, out_f_hbuff, out_Nf_hbuff, out_limg_hbuff, out_mimg_hbuff);
     Py_END_ALLOW_THREADS
 
     float result=0.0;
@@ -233,6 +230,7 @@ const char* const arr_fwlist[] = {
     "P_faces",
     "I_Vlabels",
     "Vidx_init",
+    "block_size",
     "out_v_idx",
     "out_verts",
     "out_uvs",
@@ -245,11 +243,12 @@ static PyObject* pforeground_mesh_faces(PyObject *module, PyObject *args, PyObje
     PyObject* py_P_faces;
     PyObject* py_I_Vlabels;
     int Vidx_init;
+    int block_size;
     PyObject* py_I_Vidx;
     PyObject* py_faces;
     PyObject* py_verts;
     PyObject* py_uvs;
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOiOOOO", (char**)arr_fwlist, &py_I_depth, &py_P_faces, &py_I_Vlabels, &Vidx_init, &py_I_Vidx, &py_verts, &py_uvs, &py_faces)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOiiOOOO", (char**)arr_fwlist, &py_I_depth, &py_P_faces, &py_I_Vlabels, &Vidx_init, &block_size, &py_I_Vidx, &py_verts, &py_uvs, &py_faces)) {
         PyErr_Format(PyExc_ValueError, "Parser Args Internal error");
         return nullptr;
     }
@@ -265,10 +264,10 @@ static PyObject* pforeground_mesh_faces(PyObject *module, PyObject *args, PyObje
     if (!BuffDepth.unpack(py_I_depth, 0, arr_fwlist[0])) return nullptr;
     if (!BuffPFaces.unpack(py_P_faces, 0, arr_fwlist[1])) return nullptr;
     if (!BuffIVLabels.unpack(py_I_Vlabels, 0, arr_fwlist[2])) return nullptr;
-    if (!BuffOutputIVidx.unpack(py_I_Vidx, 0, arr_fwlist[4])) return nullptr;
-    if (!BuffOutputV.unpack(py_verts, 0, arr_fwlist[5])) return nullptr;
-    if (!BuffOutputUV.unpack(py_uvs, 0, arr_fwlist[6])) return nullptr;
-    if (!BuffOutputF.unpack(py_faces, 0, arr_fwlist[7])) return nullptr;
+    if (!BuffOutputIVidx.unpack(py_I_Vidx, 0, arr_fwlist[5])) return nullptr;
+    if (!BuffOutputV.unpack(py_verts, 0, arr_fwlist[6])) return nullptr;
+    if (!BuffOutputUV.unpack(py_uvs, 0, arr_fwlist[7])) return nullptr;
+    if (!BuffOutputF.unpack(py_faces, 0, arr_fwlist[8])) return nullptr;
 
     long int* shape_d = BuffDepth.py_buf.shape;
     long int* shape_f = BuffPFaces.py_buf.shape;
@@ -289,7 +288,6 @@ static PyObject* pforeground_mesh_faces(PyObject *module, PyObject *args, PyObje
 
     int w = (int)shape_d[1];
     int h = (int)shape_d[0];
-    int block_size=16;
     Buffer<uint8_t> depth_hbuff= Buffer<uint8_t>(depth_host, (int)shape_d[1], (int)shape_d[0]);
     Buffer<int32_t, 3> f_hbuff= Buffer<int32_t, 3>(faces, (int)shape_f[2],(int)shape_f[1], (int)shape_f[0]);
     Buffer<int32_t, 2> vlabels_hbuff= Buffer<int32_t, 2>(vlabels, (int)shape_vl[1], (int)shape_vl[0]);
@@ -300,7 +298,7 @@ static PyObject* pforeground_mesh_faces(PyObject *module, PyObject *args, PyObje
 
 
     Py_BEGIN_ALLOW_THREADS
-        foreground_mesh_faces(depth_hbuff, f_hbuff, vlabels_hbuff, Vidx_init, out_vidx_hbuff, out_v_hbuff, out_uv_hbuff, out_f_hbuff);
+        foreground_mesh_faces(depth_hbuff, f_hbuff, vlabels_hbuff, Vidx_init, block_size, out_vidx_hbuff, out_v_hbuff, out_uv_hbuff, out_f_hbuff);
     Py_END_ALLOW_THREADS
 
     float result=0.0;

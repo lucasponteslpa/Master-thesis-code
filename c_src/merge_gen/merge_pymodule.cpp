@@ -143,6 +143,7 @@ namespace{
     "I_back_labels",
     "I_fore_mask",
     "N0_idx",
+    "block_size",
     "P_out_faces",
     "P_N_faces",
     "I_out_vlabel",
@@ -158,11 +159,13 @@ static PyObject* pmerge_mesh_verts(PyObject *module, PyObject *args, PyObject *k
     PyObject* py_I_back_labels ;
     PyObject* py_I_fore_mask;
     int N0_vidx;
+    int block_size;
+
     PyObject* py_P_out_faces;
     PyObject* py_P_N_faces;
     PyObject* py_I_out_vlabel;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOiOOO", (char**)arr_kwlist, &py_I_fore_idx, &py_I_back_idx, &py_I_back_labels, &py_I_fore_mask, &N0_vidx, &py_P_out_faces, &py_P_N_faces, &py_I_out_vlabel)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOiiOOO", (char**)arr_kwlist, &py_I_fore_idx, &py_I_back_idx, &py_I_back_labels, &py_I_fore_mask, &N0_vidx, &block_size, &py_P_out_faces, &py_P_N_faces, &py_I_out_vlabel)) {
         PyErr_Format(PyExc_ValueError, "Parser Args Internal error");
         return nullptr;
     }
@@ -179,9 +182,9 @@ static PyObject* pmerge_mesh_verts(PyObject *module, PyObject *args, PyObject *k
     if (!BuffIBackIdx.unpack(py_I_back_idx, 0, arr_kwlist[1])) return nullptr;
     if (!BuffIBackLabels.unpack(py_I_back_labels, 0, arr_kwlist[2])) return nullptr;
     if (!BuffBIForeMask.unpack(py_I_fore_mask, 0, arr_kwlist[3])) return nullptr;
-    if (!BuffPOutFaces.unpack(py_P_out_faces, 0, arr_kwlist[5])) return nullptr;
-    if (!BuffPNFaces.unpack(py_P_N_faces, 0, arr_kwlist[6])) return nullptr;
-    if (!BuffIOutVLabel.unpack(py_I_out_vlabel, 0, arr_kwlist[7])) return nullptr;
+    if (!BuffPOutFaces.unpack(py_P_out_faces, 0, arr_kwlist[6])) return nullptr;
+    if (!BuffPNFaces.unpack(py_P_N_faces, 0, arr_kwlist[7])) return nullptr;
+    if (!BuffIOutVLabel.unpack(py_I_out_vlabel, 0, arr_kwlist[8])) return nullptr;
 
     long int* shape_in = BuffIForeIdx.py_buf.shape;
     long int* Bshape_in = BuffBIForeMask.py_buf.shape;
@@ -204,7 +207,6 @@ static PyObject* pmerge_mesh_verts(PyObject *module, PyObject *args, PyObject *k
     int N_p = (int)PFshape_out[0];
     int N_f = (int)PFshape_out[1];
     int N_c = (int)PFshape_out[2];
-    int block_size=16;
 
     Buffer<int32_t, 2> HBuffIForeIdx = Buffer<int32_t, 2>(IForeIdxHost, w,h);
     Buffer<int32_t, 2> HBuffIBackIdx = Buffer<int32_t, 2>(IBackIdxHost, w,h);
@@ -216,7 +218,7 @@ static PyObject* pmerge_mesh_verts(PyObject *module, PyObject *args, PyObject *k
 
 
     Py_BEGIN_ALLOW_THREADS
-        merge_mesh_verts(HBuffIForeIdx, HBuffIBackIdx, HBuffIBackLabels, HBuffBIForeMask, N0_vidx, HBuffPOutFaces, HBuffPNFaces, HBuffIOutVLabel);
+        merge_mesh_verts(HBuffIForeIdx, HBuffIBackIdx, HBuffIBackLabels, HBuffBIForeMask, N0_vidx, block_size, HBuffPOutFaces, HBuffPNFaces, HBuffIOutVLabel);
     Py_END_ALLOW_THREADS
 
     float result=0.0;
@@ -228,6 +230,7 @@ const char* const arr_fwlist[] = {
     "I_depth",
     "P_faces",
     "I_Vidx",
+    "block_size",
     "out_verts",
     "out_uvs",
     "out_faces",
@@ -238,10 +241,11 @@ static PyObject* pmerge_mesh_faces(PyObject *module, PyObject *args, PyObject *k
     PyObject* py_I_depth;
     PyObject* py_P_faces;
     PyObject* py_I_Vidx;
+    int block_size;
     PyObject* py_verts;
     PyObject* py_uvs;
     PyObject* py_faces;
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOOOO", (char**)arr_fwlist, &py_I_depth, &py_P_faces, &py_I_Vidx, &py_verts, &py_uvs, &py_faces)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOOiOOO", (char**)arr_fwlist, &py_I_depth, &py_P_faces, &py_I_Vidx, &block_size, &py_verts, &py_uvs, &py_faces)) {
         PyErr_Format(PyExc_ValueError, "Parser Args Internal error");
         return nullptr;
     }
@@ -256,9 +260,9 @@ static PyObject* pmerge_mesh_faces(PyObject *module, PyObject *args, PyObject *k
     if (!BuffDepth.unpack(py_I_depth, 0, arr_fwlist[0])) return nullptr;
     if (!BuffPFaces.unpack(py_P_faces, 0, arr_fwlist[1])) return nullptr;
     if (!BuffIVIdx.unpack(py_I_Vidx, 0, arr_fwlist[2])) return nullptr;
-    if (!BuffOutputV.unpack(py_verts, 0, arr_fwlist[3])) return nullptr;
-    if (!BuffOutputUV.unpack(py_uvs, 0, arr_fwlist[4])) return nullptr;
-    if (!BuffOutputF.unpack(py_faces, 0, arr_fwlist[5])) return nullptr;
+    if (!BuffOutputV.unpack(py_verts, 0, arr_fwlist[4])) return nullptr;
+    if (!BuffOutputUV.unpack(py_uvs, 0, arr_fwlist[5])) return nullptr;
+    if (!BuffOutputF.unpack(py_faces, 0, arr_fwlist[6])) return nullptr;
 
     long int* shape_d = BuffDepth.py_buf.shape;
     long int* shape_f = BuffPFaces.py_buf.shape;
@@ -276,7 +280,6 @@ static PyObject* pmerge_mesh_faces(PyObject *module, PyObject *args, PyObject *k
 
     int w = (int)shape_d[1];
     int h = (int)shape_d[0];
-    int block_size=16;
     Buffer<uint8_t> depth_hbuff= Buffer<uint8_t>(depth_host, (int)shape_d[1], (int)shape_d[0]);
     Buffer<int32_t, 3> f_hbuff= Buffer<int32_t, 3>(faces, (int)shape_f[2],(int)shape_f[1], (int)shape_f[0]);
     Buffer<int32_t, 2> vidx_hbuff= Buffer<int32_t, 2>(vidx, (int)shape_vi[1], (int)shape_vi[0]);
@@ -286,7 +289,7 @@ static PyObject* pmerge_mesh_faces(PyObject *module, PyObject *args, PyObject *k
 
 
     Py_BEGIN_ALLOW_THREADS
-        merge_mesh_faces(depth_hbuff, f_hbuff, vidx_hbuff, out_v_hbuff, out_uv_hbuff, out_f_hbuff);
+        merge_mesh_faces(depth_hbuff, f_hbuff, vidx_hbuff, block_size, out_v_hbuff, out_uv_hbuff, out_f_hbuff);
     Py_END_ALLOW_THREADS
 
     float result=0.0;
