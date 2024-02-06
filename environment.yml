@@ -1,0 +1,13 @@
+name: master_th
+dependencies:
+  - python=3.9
+  - numpy
+  - pandas
+  - pip
+  - pip:
+    - opencv-python
+    - PyOpenGL
+    - glfw
+    - imageio
+    - tensorflow
+    

@@ -5,9 +5,11 @@ import os
 import torch
 import argparse
 from mesh_utils import *
-from utilities import gen_video
+from utilities import gen_video, get_poses, selectRealStateScene, show_seg_mask
 from depth_inference import midas_inference
 from simple_lama_inpainting import SimpleLama
+from MobileSAM import run_SAM
+import sys
 # from background_mesh import BackgroundMesh
 # from foreground_mesh import ForegroundMesh
 # from quadtrees import mQuadT, Block
@@ -16,6 +18,9 @@ from simple_lama_inpainting import SimpleLama
 from background_verts_module import background_mesh_verts, background_mesh_faces
 from foreground_mesh_verts_module import pforeground_mesh_verts, pforeground_mesh_faces
 from merge_mesh_verts_module import pmerge_mesh_verts, pmerge_mesh_faces
+from nerf.load_llff import load_llff_data
+
+
 
 class ParallaxInpainting:
     def __init__(self,
@@ -36,20 +41,45 @@ class ParallaxInpainting:
         self.midas_mobile = midas_mobile
 
 
-    def load_depth_and_canny(self, debug=False):
+    def load_depth_and_canny(self, color=None, debug=False):
         if not self.depth_dir is None:
             img_depth = cv2.imread(self.depth_dir)
         else:
-            color = cv2.imread(self.rgb_dir)
-            color = cv2.cvtColor(color,cv2.COLOR_BGR2RGB)/255.0
-        img_depth = midas_inference(self.rgb_dir,out_path='depth_inference.png')
-        img_depth = np.repeat(img_depth, 3, axis=-1)
+            if color is None:
+                color = cv2.imread(self.rgb_dir)
+            color = cv2.cvtColor(color,cv2.COLOR_BGR2RGB)
+        # img_depth = midas_inference(self.rgb_dir,out_path='depth_inference.png')
+        # img_depth = np.repeat(img_depth, 3, axis=-1)
 
+        model_type = "DPT_Large"
+        midas = torch.hub.load("intel-isl/MiDaS", model_type)
+        device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        midas.to(device)
+        midas.eval()
+
+        midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
+        if model_type == "DPT_Large" or model_type == "DPT_Hybrid":
+            transform = midas_transforms.dpt_transform
+        else:
+            transform = midas_transforms.small_transform
+
+        input_batch = transform(color).to(device)
+        cv2.imwrite("color_depth_input.png", 255*input_batch[0].cpu().numpy().transpose((1,2,0)))
+        with torch.no_grad():
+            prediction = midas(input_batch)
+            prediction = torch.nn.functional.interpolate(
+                prediction.unsqueeze(1),
+                size=color.shape[:2],
+                mode="bicubic",
+                align_corners=False,
+            ).squeeze()
+        img_depth = prediction.cpu().numpy()
+        img_depth = np.repeat(np.expand_dims(img_depth, -1), 3, axis=-1)
         DEPTH_MAX = img_depth.max()
         img_depth = img_depth/img_depth.max()
 
-        width =  img_depth.shape[1]
-        height = img_depth.shape[0]
+        width =  color.shape[1]
+        height = color.shape[0]
 
         ratio_w = 1.0 if width >= height else width/height
         ratio_h = 1.0 if height >= width else height/width
@@ -63,16 +93,31 @@ class ParallaxInpainting:
         self.ratio_h = 1.0 if self.height >= self.width else  self.height/self.width
 
         dim = (self.width, self.height)
-        color_blur = cv2.GaussianBlur((255*color).astype(np.uint8), (7,7),0)
-        self.color_res = cv2.resize(cv2.cvtColor(color_blur,cv2.COLOR_RGB2BGR), dsize=(3*self.width, 3*self.height), interpolation = cv2.INTER_CUBIC)
-        cv2.imwrite("color.png", self.color_res)
+        print(dim)
+        # color_blur = cv2.GaussianBlur((color).astype(np.uint8), (7,7),0)
+        # self.color_res = cv2.resize(cv2.cvtColor(color_blur,cv2.COLOR_RGB2BGR), dsize=(3*self.width, 3*self.height), interpolation = cv2.INTER_CUBIC)
+        self.color_res = cv2.resize(cv2.cvtColor(color.astype(np.uint8),cv2.COLOR_RGB2BGR), dsize=(self.width//2, self.height//2), interpolation = cv2.INTER_CUBIC)
+        color_sam = run_SAM(self.color_res)
+        self.color_res = cv2.resize(cv2.cvtColor(color.astype(np.uint8),cv2.COLOR_RGB2BGR), dsize=(self.width, self.height), interpolation = cv2.INTER_CUBIC)
+        # np.save('seg_stylist', color_sam)
+        # breakpoint()
+        rgb_mask = show_seg_mask(color_sam)
+        cv2.imwrite('seg_img.png', cv2.resize(255*rgb_mask, dsize=(self.width, self.height), interpolation=cv2.INTER_NEAREST))
+        self.rgb_dir = "images/color.png"
+        cv2.imwrite(self.rgb_dir, self.color_res)
         depth_res_c = cv2.resize((img_depth*255).astype(np.uint8), dsize=dim, interpolation = cv2.INTER_CUBIC)
         cv2.imwrite("depth_inference.png", depth_res_c)
+        # depth_reap = np.repeat(depth_res_c[:,:,:1], color_sam.shape[0], axis=2)
+        # depth_mask_s = (depth_reap*color_sam.transpose((1,2,0))).sum(axis=2)
+        # depth_mask_n = (color_sam.transpose((1,2,0))).sum(axis=2)
+        # depth_mask_mean = depth_mask_s/depth_mask_n
+        # depth_res_c = np.repeat(np.expand_dims(depth_mask_mean, axis=-1), 3, axis=-1).astype(np.uint8)
         kernel = np.ones((3, 3), 'uint8')
+        # depth_res_c = dilated_d
         b_d  = cv2.erode(depth_res_c, kernel, iterations=2)
         b_d = cv2.GaussianBlur(b_d, (3,3),0)
         depth_res_c = b_d
-        img_depth_canny = cv2.Canny(b_d, 30, 50, L2gradient=True)
+        img_depth_canny = cv2.Canny(b_d, 50, 70, L2gradient=True)
         pre_filter_canny = img_depth_canny
         img_depth_canny = self.filter_canny(img_depth_canny)
 
@@ -214,15 +259,20 @@ class ParallaxInpainting:
 
         # breakpoint()
 
-    def halide_mesh(self, get_screenshot = False):
-        self.load_depth_and_canny(debug=True)
+    def halide_mesh(self, color=None, get_screenshot = False):
+        import time
+        start = time.time()
+        self.load_depth_and_canny(color=color,debug=True)
+        end = time.time()
+        avg_time_sec = end - start
+        print("depth time: %fms" % (avg_time_sec * 1e3))
         canny_buf = self.canny
-        assert canny_buf.max() == 255
+        # assert canny_buf.max() == 255
         assert canny_buf.ndim == 2
         assert canny_buf.dtype == np.uint8
 
         back_canny_buf = self.back_canny
-        assert back_canny_buf.max() == 255
+        # assert back_canny_buf.max() == 255
         assert back_canny_buf.ndim == 2
         assert back_canny_buf.dtype == np.uint8
 
@@ -250,10 +300,9 @@ class ParallaxInpainting:
         background_mesh_verts(canny_buf, back_canny_buf, depth_buf, self.block_size, canny_buf.shape[1]//self.block_size, canny_buf.shape[0]//self.block_size , IB_merge_mask, IB_verts_buf,IB_fore_verts_buf,IB_uvs_buf, I_labels)
         background_mesh_faces(IB_verts_buf, IB_fore_verts_buf, IB_uvs_buf, I_labels, self.block_size, back_verts_buf, back_uvs_buf, back_faces_buf, I_back_verts_idx)
         cv2.imwrite('v_labels.png', 255*(I_labels/I_labels.max()))
-        mask_res = 255*(cv2.resize(IB_merge_mask[:-1,:-1], dsize=(I_labels.shape[0], I_labels.shape[1]), interpolation=cv2.INTER_NEAREST )>0).astype(np.int32)
-        cv2.imwrite('mask.png', 255*(mask_res/mask_res.max()))
-        faces = back_faces_buf.transpose((1,0))
-        faces = faces[np.where((faces<0).sum(axis=-1)==0)]
+        mask_res = 255*(cv2.resize(IB_merge_mask[:-1,:-1], dsize=(I_labels.shape[1], I_labels.shape[0]), interpolation=cv2.INTER_NEAREST )>0).astype(np.int32)
+        self.back_faces = back_faces_buf.transpose((1,0))
+        self.back_faces = self.back_faces[np.where((self.back_faces<0).sum(axis=-1)==0)]
         back_verts = back_verts_buf.transpose((1,0))
         # back_verts[:,-1] = (back_verts[:,-1]/255)
         back_uvs = back_uvs_buf.transpose((1,0))
@@ -289,33 +338,102 @@ class ParallaxInpainting:
         merge_face_buf = np.zeros((NF,3), dtype=np.int32)
 
         pmerge_mesh_faces(depth_buf, merge_out_f_buf, merge_out_limg_buf, self.block_size, merge_vert_buf, merge_uv_buf, merge_face_buf)
-        all_verts = np.concatenate((back_verts, fore_vert_buf, merge_vert_buf), axis=0)
-        all_verts[:,-1] = 1.0 - all_verts[:,-1]
-        all_uvs = np.concatenate((back_uvs[:,:2], fore_uv_buf[:,:2], merge_uv_buf[:,:2]), axis=0)
-        all_faces = np.concatenate((fore_face_buf, merge_face_buf), axis=0)
-        total_faces = np.concatenate((faces, all_faces), axis=0)
-        write_obj('',
-                    v_pos=torch.from_numpy(all_verts),
-                    t_pos_idx=torch.from_numpy(total_faces),
-                    file_name='total_mesh.obj')
-        # inpaint_func = SimpleLama()
-        # self.inpaint_dir = 'images/inpaint_curr.png'
-        # res_inp = inpaint_func(self.color_res, mask_res+(255*(I_ForeMask_buf/I_ForeMask_buf.max())))
-        # cv2.imwrite(self.inpaint_dir, res_inp)
+        self.all_verts = np.concatenate((back_verts, fore_vert_buf, merge_vert_buf), axis=0)
+        self.all_verts[:,-1] = 1.0 - self.all_verts[:,-1]
+        # self.all_verts[:,:-1] /= scale
+        self.all_uvs = np.concatenate((back_uvs[:,:2], fore_uv_buf[:,:2], merge_uv_buf[:,:2]), axis=0)
+        self.fore_faces = np.concatenate((fore_face_buf, merge_face_buf), axis=0)
+        total_faces = np.concatenate((self.back_faces, self.fore_faces), axis=0)
+        breakpoint()
+        # write_obj('',
+        #             v_pos=torch.from_numpy(self.all_verts),
+        #             t_pos_idx=torch.from_numpy(total_faces),
+        #             file_name='total_mesh.obj')
+        # breakpoint()
+        inpaint_func = SimpleLama()
+        self.inpaint_dir = 'images/inpaint_curr.png'
+        cv2.imwrite('mask.png', mask_res+(255*(I_ForeMask_buf/I_ForeMask_buf.max())))
+        # import timeit
+        # timing_iterations = 1
+        # t = timeit.Timer(lambda: np.array(inpaint_func(self.color_res, mask_res+(255*(I_ForeMask_buf/I_ForeMask_buf.max())))))
+        # avg_time_sec = t.timeit(number=timing_iterations) / timing_iterations
+        # print("time: %fms" % (avg_time_sec * 1e3))
+        kernel = np.ones((3, 3), 'uint8')
+        inp_M = cv2.dilate(mask_res+(255*(I_ForeMask_buf/I_ForeMask_buf.max())), kernel, iterations=8)
+        res_inp = np.array(inpaint_func(self.color_res, inp_M))
+        res_inp = cv2.resize(res_inp, dsize=(self.width, self.height), interpolation = cv2.INTER_CUBIC)
+        mask_big = cv2.resize(np.repeat(np.expand_dims(inp_M, -1), 3, axis=-1), dsize=(self.width, self.height), interpolation = cv2.INTER_CUBIC)
+        cv2.imwrite("big_mask.png", mask_big)
+        # breakpoint()
+        cv2.imwrite(self.inpaint_dir, (mask_big/255)*res_inp + (1 - (mask_big/255))*self.color_res)
+        # cv2.imwrite(self.inpaint_dir, (mask_big/255)*res_inp)
+
+    def renderFFLL(self, path="datasets/nerf_llff_data/flower/"):
+        images, self.poses, self.bds, render_poses, i_test = load_llff_data(path)
+        # breakpoint()
+        _, bounds, focal, near, far, ratio, scale_factor = get_poses(path)
+        close_depth, inf_depth = self.bds.min(), self.bds.max()
+        dt = .75
+        mean_dz = 1./(((1.-dt)/close_depth + dt/inf_depth))
+        d_depth = mean_dz
+        # self.all_verts[:,-1] *= self.bds.max()-self.bds.min()
+        self.all_verts *= d_depth 
+        self.all_verts[:,-1] += d_depth
         render = TextureRenderer(
-                             height=self.render_res,
-                             width= self.render_res,
-                             vertices=all_verts.reshape(-1),
-                             uv_coords=all_uvs.reshape(-1),
-                             indices=all_faces.reshape(-1),
-                             indices_back=faces.reshape(-1),
+                            #  height=self.render_res,
+                             height=self.poses[0,0,-1],
+                            #  width= self.render_res,
+                             width=self.poses[0,1,-1],
+                             vertices=self.all_verts.reshape(-1),
+                             uv_coords=self.all_uvs.reshape(-1),
+                             indices=self.fore_faces.reshape(-1),
+                             indices_back=self.back_faces.reshape(-1),
                              img_file=self.rgb_dir,
                              img_file_back=self.inpaint_dir,
                              texture_dims=(2*(self.width),2*(self.height)),
                              frames_path='frames_orig')
-        render.runCircleZoomWindow(z_init=6, get_screenshot=get_screenshot)
-        if get_screenshot:
-            gen_video('frames_orig/','movie','sp61_dimas_stylists_parallax_inpaint_v2'+str(self.depth_max_dim)+'b'+str(self.block_size)+'.mp4')
+        # render.runCircleZoomWindow(z_init=6, get_screenshot=get_screenshot)
+        # render.runMVP(self.poses[:,:,:-1], self.poses[0,2,-1], near, far, ratio, z_init=focal)
+        render.runMVP(self.poses[:,:,:-1], self.poses[0,2,-1], near, far, ratio, z_init=focal, get_screenshot=True)
+        # if get_screenshot:
+        #     gen_video('frames_orig/','movie','sp61_dimas_stylists_parallax_inpaint_v2'+str(self.depth_max_dim)+'b'+str(self.block_size)+'.mp4')
+
+    def renderRealState10K(self, scene_name='000c3ab189999a83'):
+        imgs, poses, intrinsics = selectRealStateScene('datasets/RealEstate10K',scene_name, inverse_cam=True)
+
+        self.halide_mesh(color=imgs[0])
+        self.all_verts[:,0] = self.all_verts[:,0]*self.ratio_w
+        self.all_verts[:,1] = self.all_verts[:,1]*self.ratio_h
+        rot = poses[0,:3,:3]
+        trans = poses[0,:3,3]
+        # self.all_verts = self.all_verts@rot
+        # self.all_verts += trans
+        self.all_verts[:,-1] *=100
+        self.all_verts[:,-1] +=1
+        self.all_verts[:,0] *=50
+        self.all_verts[:,1] *=50
+        total_faces = np.concatenate((self.back_faces, self.fore_faces), axis=0)
+        write_obj('',
+                    v_pos=torch.from_numpy(self.all_verts),
+                    t_pos_idx=torch.from_numpy(total_faces),
+                    file_name='total_mesh.obj')
+        breakpoint()
+        render = TextureRenderer(
+                            #  height=self.render_res,
+                             height=imgs.shape[1],
+                            #  width= self.render_res,
+                             width=imgs.shape[2],
+                             vertices=self.all_verts.reshape(-1),
+                             uv_coords=self.all_uvs.reshape(-1),
+                             indices=self.fore_faces.reshape(-1),
+                             indices_back=self.back_faces.reshape(-1),
+                             img_file=self.rgb_dir,
+                             img_file_back=self.inpaint_dir,
+                             texture_dims=(2*(self.width),2*(self.height)),
+                             frames_path='frames_orig')
+        # render.runCircleZoomWindow(z_init=6, get_screenshot=get_screenshot)
+        # render.runMVP(self.poses[:,:,:-1], self.poses[0,2,-1], near, far, ratio, z_init=focal)
+        render.runMVP(poses, intrinsics, 0.1, 1000.0, imgs.shape[1]/imgs.shape[0], z_init=1, get_screenshot=True)
 
 
     def renderCircleZoom(self, get_screenshot=False):
@@ -352,7 +470,7 @@ class ParallaxInpainting:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Cube fit example')
-    parser.add_argument('--rgb_dir', help='specify output directory', default='images/Stylists.png')
+    parser.add_argument('--rgb_dir', help='specify output directory', default='images/flower0.png')
     parser.add_argument('--inpaint_dir', help='specify output directory', default='images/stylists_inp_640b32_1024.png')
     parser.add_argument('--depth_dir', help='specify output directory', default=None)
     parser.add_argument('--discontinuous', action='store_true', default=False)
@@ -369,4 +487,7 @@ if __name__ == "__main__":
                                   midas_mobile=False)
     # parallax = ParallaxInpainting(args.rgb_dir, None, args.depth_dir, depth_max_dim=640)
     # parallax.run(render_mesh=False,debug=True,get_screenshot=False)
-    parallax.halide_mesh(False)
+    # parallax.halide_mesh(debug=True)
+    parallax.renderRealState10K()
+
+

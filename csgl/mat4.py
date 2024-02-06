@@ -92,6 +92,20 @@ class mat4(object):
         m[3][2] = -(2.0 * z_far * z_near) / (z_far - z_near)
         return m
 
+    def intrinsics_perspective(f_x, f_y, W, H, n=0.1, f=1000.0):
+        assert(f_x > 0)
+        assert(f_y > 0)
+        assert(H > 0)
+        assert(W > 0)
+
+        m = mat4.zeroes()
+        m[0][0] = f_x/W
+        m[1][1] = f_y/H
+        m[2][2] = -(f+n)/(f-n)
+        m[2][3] = -1.0
+        m[3][2] = -(2*f*n)/(f-n)
+        return m
+    
     @staticmethod
     def lookat(eye,center,up):
         f = (center-eye).normalized()

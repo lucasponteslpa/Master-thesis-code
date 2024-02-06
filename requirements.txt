@@ -1,1 +1,2 @@
 pip install simple-lama-inpainting
+pip install git+https://github.com/ChaoningZhang/MobileSAM.git
