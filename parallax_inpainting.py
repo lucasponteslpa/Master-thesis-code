@@ -1,4 +1,5 @@
 from renderTexture import TextureRenderer
+from renderDualPixels import DualPixelsTextureRenderer
 import numpy as np
 import cv2
 import os
@@ -435,6 +436,68 @@ class ParallaxInpainting:
         # render.runMVP(self.poses[:,:,:-1], self.poses[0,2,-1], near, far, ratio, z_init=focal)
         render.runMVP(poses, intrinsics, 0.1, 1000.0, imgs.shape[1]/imgs.shape[0], z_init=1, get_screenshot=True)
 
+    def renderDualPixels(self, scene_name='000c3ab189999a83'):
+        # imgs, poses, intrinsics = selectRealStateScene('datasets/RealEstate10K',scene_name, inverse_cam=True)
+        img = cv2.imread('datasets/DualPixelSamples/scaled_images/20180302_mmmm_6527_20180302T122533/result_scaled_image_left.jpg')
+        img_depth = cv2.imread('datasets/DualPixelSamples/merged_depth/20180302_mmmm_6527_20180302T122533/result_merged_depth_left.png')
+        breakpoint()
+        img_depth = img_depth/255.0
+        img_depth = (100*0.2)/(100.0 - (100.0 - 0.2)*img_depth)
+        inp_test = {
+            # 'position': np.array([-0.033926695486539586, -0.00019002111320759051, 0.012313083939542623],dtype=np.float32),
+            'position': np.array([0, 0, 0],dtype=np.float32),
+            # 'orientation': np.array([0.00332766556511672 , 0.013991621971414663, -0.0057999186600828532],dtype=np.float32),
+            'orientation': np.array([0 , 0, 0],dtype=np.float32),
+            'focal_length': 862.72441382772809,
+            'pixel_aspect_ratio': 1,
+            'principal_points_f_a_px_py': np.array([862.72441382772809, 1.0, 374.28591682883052 ,505.78000208165537], dtype=np.float32),
+            'radial_distortion': np.array([0.0036988896062042282, -0.04497480602584044 , 0],dtype=np.float32),
+            'skew': 0,
+            'size': (756,1008)
+            }
+        breakpoint()
+        intrinsic = np.eye(4)
+        intrinsic[0,0] = inp_test['principal_points_f_a_px_py'][0]
+        intrinsic[1,1] = inp_test['principal_points_f_a_px_py'][1]
+        intrinsic[0,2] = inp_test['size'][0]/2
+        intrinsic[1,2] = inp_test['size'][1]/2
+
+        self.halide_mesh(color=img)
+        self.all_verts[:,0] = self.all_verts[:,0]*self.ratio_w
+        self.all_verts[:,1] = self.all_verts[:,1]*self.ratio_h
+        # self.all_verts = self.all_verts@rot
+        # self.all_verts += trans
+        self.all_verts[:,-1] *=(img_depth.max()-img_depth.min())
+        self.all_verts[:,-1] +=img_depth.min()
+
+        total_faces = np.concatenate((self.back_faces, self.fore_faces), axis=0)
+        write_obj('',
+                    v_pos=torch.from_numpy(self.all_verts),
+                    t_pos_idx=torch.from_numpy(total_faces),
+                    file_name='total_mesh.obj')
+        breakpoint()
+        render = DualPixelsTextureRenderer(
+                            #  height=self.render_res,
+                             height=inp_test['size'][1],
+                            #  width= self.render_res,
+                             width=inp_test['size'][0],
+                             vertices=self.all_verts.reshape(-1),
+                             uv_coords=self.all_uvs.reshape(-1),
+                             indices=self.fore_faces.reshape(-1),
+                             indices_back=self.back_faces.reshape(-1),
+                             img_file=self.rgb_dir,
+                             img_file_back=self.inpaint_dir,
+                             texture_dims=(2*(self.width),2*(self.height)),
+                             frames_path='frames_orig')
+        # render.runCircleZoomWindow(z_init=6, get_screenshot=get_screenshot)
+        # render.runMVP(self.poses[:,:,:-1], self.poses[0,2,-1], near, far, ratio, z_init=focal)
+        render.runMVP(
+            intrinsic, 
+            inp_test['radial_distortion'], 
+            principal_p=inp_test['principal_points_f_a_px_py'],
+            angles=inp_test['orientation'],
+            center=inp_test['position'] )
+
 
     def renderCircleZoom(self, get_screenshot=False):
         render = TextureRenderer(
@@ -488,6 +551,6 @@ if __name__ == "__main__":
     # parallax = ParallaxInpainting(args.rgb_dir, None, args.depth_dir, depth_max_dim=640)
     # parallax.run(render_mesh=False,debug=True,get_screenshot=False)
     # parallax.halide_mesh(debug=True)
-    parallax.renderRealState10K()
+    parallax.renderDualPixels()
 
 
