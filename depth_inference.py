@@ -24,7 +24,7 @@ def center_crop(img, dim):
     crop_img = img[mid_y-ch2:mid_y+ch2, mid_x-cw2:mid_x+cw2]
     return crop_img
 
-def midas_inference(img_path, out_path=None, do_crop = False, crop_path=None):
+def midas_inference(img_path, img_rgb=None, out_path=None, do_crop = False, crop_path=None):
     # Load TFLite model and allocate tensors.
     model_path = "tf_model/midas_model.tflite"
     interpreter = tf.lite.Interpreter(model_path=model_path)
@@ -46,7 +46,10 @@ def midas_inference(img_path, out_path=None, do_crop = False, crop_path=None):
     print()
 
     # Convert features to NumPy array
-    features = cv2.imread(img_path)
+    if img_rgb is None:
+        features = cv2.imread(img_path)
+    else:
+        features = img_rgb
     if do_crop:
         dim_size = features.shape[0] if features.shape[0]<features.shape[1] else features.shape[1]
         features = center_crop(features, (dim_size, dim_size))
